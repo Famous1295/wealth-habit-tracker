@@ -1,0 +1,211 @@
+import { c as createServerFn } from "./createServerFn-CIHAFgYl.mjs";
+import { t as createServerRpc } from "./createServerRpc-B90ckaqP.mjs";
+import crypto from "node:crypto";
+//#region node_modules/.nitro/vite/services/ssr/assets/admin-portal.functions-DvY385p6.js
+var TOKEN_TTL_MS = 720 * 60 * 1e3;
+function getSecret() {
+	const secret = process.env.ADMIN_PORTAL_TOKEN_SECRET;
+	if (!secret) throw new Error("ADMIN_PORTAL_TOKEN_SECRET is not configured on the server.");
+	return secret;
+}
+function sign(payload) {
+	return crypto.createHmac("sha256", getSecret()).update(payload).digest("hex");
+}
+function makeToken() {
+	const expiry = Date.now() + TOKEN_TTL_MS;
+	return `${expiry}.${sign(String(expiry))}`;
+}
+function verifyToken(token) {
+	if (!token) return false;
+	const [expiryStr, sig] = token.split(".");
+	if (!expiryStr || !sig) return false;
+	const expiry = Number(expiryStr);
+	if (!Number.isFinite(expiry) || Date.now() > expiry) return false;
+	const expected = sign(expiryStr);
+	const a = Buffer.from(sig);
+	const b = Buffer.from(expected);
+	if (a.length !== b.length) return false;
+	return crypto.timingSafeEqual(a, b);
+}
+function assertAdmin(token) {
+	if (!verifyToken(token)) throw new Error("Unauthorized: admin session is invalid or expired. Please log in again.");
+}
+async function getAdminClient() {
+	const { supabaseAdmin } = await import("./client.server-pv5dszoL.mjs");
+	return supabaseAdmin;
+}
+var adminPortalLogin_createServerFn_handler = createServerRpc({
+	id: "45f98fc6427d0fd07012a0c7a909d514ce489d4ad3f9eee63addcb7719889381",
+	name: "adminPortalLogin",
+	filename: "src/lib/admin-portal.functions.ts"
+}, (opts) => adminPortalLogin.__executeServer(opts));
+var adminPortalLogin = createServerFn({ method: "POST" }).inputValidator((v) => v).handler(adminPortalLogin_createServerFn_handler, async ({ data }) => {
+	const expected = process.env.ADMIN_PORTAL_PASSWORD;
+	if (!expected) throw new Error("ADMIN_PORTAL_PASSWORD is not configured on the server.");
+	const a = Buffer.from(data.password ?? "");
+	const b = Buffer.from(expected);
+	if (!(a.length === b.length && crypto.timingSafeEqual(a, b))) throw new Error("Incorrect password.");
+	return { token: makeToken() };
+});
+var adminListOverview_createServerFn_handler = createServerRpc({
+	id: "b08c3ee60ccf05b62cdc33fcb94ff383789ac3e5fb85d09658d15346329aaa1b",
+	name: "adminListOverview",
+	filename: "src/lib/admin-portal.functions.ts"
+}, (opts) => adminListOverview.__executeServer(opts));
+var adminListOverview = createServerFn({ method: "POST" }).inputValidator((v) => v).handler(adminListOverview_createServerFn_handler, async ({ data }) => {
+	assertAdmin(data.token);
+	const supabaseAdmin = await getAdminClient();
+	const [authUsers, profiles, roles, incomes, expenses, goals, investments, habits, logs, feedback] = await Promise.all([
+		supabaseAdmin.auth.admin.listUsers({ perPage: 1e3 }),
+		supabaseAdmin.from("profiles").select("*"),
+		supabaseAdmin.from("user_roles").select("*"),
+		supabaseAdmin.from("incomes").select("*").order("received_on", { ascending: false }),
+		supabaseAdmin.from("expenses").select("*").order("spent_on", { ascending: false }),
+		supabaseAdmin.from("savings_goals").select("*"),
+		supabaseAdmin.from("investments").select("*"),
+		supabaseAdmin.from("habits").select("user_id"),
+		supabaseAdmin.from("habit_logs").select("user_id"),
+		supabaseAdmin.from("feedback").select("*").order("created_at", { ascending: false })
+	]);
+	const emailByUserId = new Map(authUsers.data.users.map((u) => [u.id, u.email ?? ""]));
+	const currencyByUserId = new Map((profiles.data ?? []).map((p) => [p.id, p.currency ?? "USD"]));
+	return {
+		users: authUsers.data.users.map((u) => ({
+			id: u.id,
+			email: u.email ?? "",
+			created_at: u.created_at,
+			last_sign_in_at: u.last_sign_in_at ?? null,
+			email_confirmed_at: u.email_confirmed_at ?? null
+		})),
+		profiles: profiles.data ?? [],
+		roles: roles.data ?? [],
+		incomes: (incomes.data ?? []).map((r) => ({
+			...r,
+			email: emailByUserId.get(r.user_id) ?? "",
+			currency: currencyByUserId.get(r.user_id) ?? "USD"
+		})),
+		expenses: (expenses.data ?? []).map((r) => ({
+			...r,
+			email: emailByUserId.get(r.user_id) ?? "",
+			currency: currencyByUserId.get(r.user_id) ?? "USD"
+		})),
+		goals: (goals.data ?? []).map((r) => ({
+			...r,
+			email: emailByUserId.get(r.user_id) ?? "",
+			currency: currencyByUserId.get(r.user_id) ?? "USD"
+		})),
+		investments: (investments.data ?? []).map((r) => ({
+			...r,
+			email: emailByUserId.get(r.user_id) ?? "",
+			currency: currencyByUserId.get(r.user_id) ?? "USD"
+		})),
+		habits: habits.data ?? [],
+		logs: logs.data ?? [],
+		feedback: (feedback.data ?? []).map((r) => ({
+			...r,
+			email: emailByUserId.get(r.user_id) ?? ""
+		}))
+	};
+});
+var adminCreateUser_createServerFn_handler = createServerRpc({
+	id: "f0a068262f95c00f1ddd08dd60d3b6e48be920977bb06ca0e3e281581562366f",
+	name: "adminCreateUser",
+	filename: "src/lib/admin-portal.functions.ts"
+}, (opts) => adminCreateUser.__executeServer(opts));
+var adminCreateUser = createServerFn({ method: "POST" }).inputValidator((v) => v).handler(adminCreateUser_createServerFn_handler, async ({ data }) => {
+	assertAdmin(data.token);
+	const supabaseAdmin = await getAdminClient();
+	const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+		email: data.email,
+		password: data.password,
+		email_confirm: true,
+		user_metadata: { full_name: data.fullName || null }
+	});
+	if (error) throw error;
+	if (data.makeAdmin && created.user) {
+		const { error: roleErr } = await supabaseAdmin.from("user_roles").insert({
+			user_id: created.user.id,
+			role: "admin"
+		});
+		if (roleErr) throw roleErr;
+	}
+	return { id: created.user?.id };
+});
+var adminDeleteUser_createServerFn_handler = createServerRpc({
+	id: "b6bfec6134d949abd1e27267e212d5fe55449a468f877dbb517cf281243f0221",
+	name: "adminDeleteUser",
+	filename: "src/lib/admin-portal.functions.ts"
+}, (opts) => adminDeleteUser.__executeServer(opts));
+var adminDeleteUser = createServerFn({ method: "POST" }).inputValidator((v) => v).handler(adminDeleteUser_createServerFn_handler, async ({ data }) => {
+	assertAdmin(data.token);
+	const { error } = await (await getAdminClient()).auth.admin.deleteUser(data.userId);
+	if (error) throw error;
+	return { ok: true };
+});
+var adminSetRole_createServerFn_handler = createServerRpc({
+	id: "c1aaccb6e6390a1199fd9958df680f2e23cbbc301895e9679d328044c683d0f2",
+	name: "adminSetRole",
+	filename: "src/lib/admin-portal.functions.ts"
+}, (opts) => adminSetRole.__executeServer(opts));
+var adminSetRole = createServerFn({ method: "POST" }).inputValidator((v) => v).handler(adminSetRole_createServerFn_handler, async ({ data }) => {
+	assertAdmin(data.token);
+	const supabaseAdmin = await getAdminClient();
+	if (data.makeAdmin) {
+		const { error } = await supabaseAdmin.from("user_roles").upsert({
+			user_id: data.userId,
+			role: "admin"
+		}, { onConflict: "user_id,role" });
+		if (error) throw error;
+	} else {
+		const { error } = await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId).eq("role", "admin");
+		if (error) throw error;
+	}
+	return { ok: true };
+});
+var adminUpdateProfile_createServerFn_handler = createServerRpc({
+	id: "c2bdcb190eeb30b6910c8d1dc9ea231bb43e72dd85cc3ddf13a48146762c2847",
+	name: "adminUpdateProfile",
+	filename: "src/lib/admin-portal.functions.ts"
+}, (opts) => adminUpdateProfile.__executeServer(opts));
+var adminUpdateProfile = createServerFn({ method: "POST" }).inputValidator((v) => v).handler(adminUpdateProfile_createServerFn_handler, async ({ data }) => {
+	assertAdmin(data.token);
+	const { error } = await (await getAdminClient()).from("profiles").update(data.patch).eq("id", data.userId);
+	if (error) throw error;
+	return { ok: true };
+});
+var EDITABLE_TABLES = [
+	"incomes",
+	"expenses",
+	"savings_goals",
+	"investments",
+	"feedback"
+];
+function assertTable(table) {
+	if (!EDITABLE_TABLES.includes(table)) throw new Error(`Table "${table}" is not editable through the admin portal.`);
+}
+var adminUpdateRecord_createServerFn_handler = createServerRpc({
+	id: "d876919398b58efb28697246396f881fa635c692dea5f0a41411e5dd1f402619",
+	name: "adminUpdateRecord",
+	filename: "src/lib/admin-portal.functions.ts"
+}, (opts) => adminUpdateRecord.__executeServer(opts));
+var adminUpdateRecord = createServerFn({ method: "POST" }).inputValidator((v) => v).handler(adminUpdateRecord_createServerFn_handler, async ({ data }) => {
+	assertAdmin(data.token);
+	assertTable(data.table);
+	const { error } = await (await getAdminClient()).from(data.table).update(data.patch).eq("id", data.id);
+	if (error) throw error;
+	return { ok: true };
+});
+var adminDeleteRecord_createServerFn_handler = createServerRpc({
+	id: "49029b21660a5d0da78db3f0199a9a036091fa139ebf1a9d2e2b359dcadd3c8a",
+	name: "adminDeleteRecord",
+	filename: "src/lib/admin-portal.functions.ts"
+}, (opts) => adminDeleteRecord.__executeServer(opts));
+var adminDeleteRecord = createServerFn({ method: "POST" }).inputValidator((v) => v).handler(adminDeleteRecord_createServerFn_handler, async ({ data }) => {
+	assertAdmin(data.token);
+	assertTable(data.table);
+	const { error } = await (await getAdminClient()).from(data.table).delete().eq("id", data.id);
+	if (error) throw error;
+	return { ok: true };
+});
+//#endregion
+export { adminCreateUser_createServerFn_handler, adminDeleteRecord_createServerFn_handler, adminDeleteUser_createServerFn_handler, adminListOverview_createServerFn_handler, adminPortalLogin_createServerFn_handler, adminSetRole_createServerFn_handler, adminUpdateProfile_createServerFn_handler, adminUpdateRecord_createServerFn_handler };

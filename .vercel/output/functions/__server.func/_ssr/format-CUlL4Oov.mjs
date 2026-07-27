@@ -1,0 +1,116 @@
+//#region node_modules/.nitro/vite/services/ssr/assets/format-CUlL4Oov.js
+var currentCurrency = "USD";
+var listeners = /* @__PURE__ */ new Set();
+function setAppCurrency(c) {
+	currentCurrency = c;
+	listeners.forEach((l) => l());
+}
+function getAppCurrency() {
+	return currentCurrency;
+}
+function subscribeCurrency(fn) {
+	listeners.add(fn);
+	return () => listeners.delete(fn);
+}
+function formatCurrency(value, currency = currentCurrency) {
+	try {
+		return new Intl.NumberFormat("en-US", {
+			style: "currency",
+			currency,
+			maximumFractionDigits: 2
+		}).format(value);
+	} catch {
+		return `${currency} ${value.toFixed(2)}`;
+	}
+}
+function formatDate(value) {
+	return (typeof value === "string" ? new Date(value) : value).toLocaleDateString(void 0, {
+		year: "numeric",
+		month: "short",
+		day: "numeric"
+	});
+}
+var EXPENSE_CATEGORIES = [
+	"Food & Dining",
+	"Transport",
+	"Rent & Utilities",
+	"Groceries",
+	"Entertainment",
+	"Shopping",
+	"Health",
+	"Education",
+	"Subscriptions",
+	"Travel",
+	"Other"
+];
+var INCOME_SOURCES = [
+	"Salary",
+	"Freelance",
+	"Business",
+	"Investments",
+	"Gift",
+	"Other"
+];
+var INVESTMENT_TYPES = [
+	"Stocks",
+	"Mutual Funds",
+	"ETF",
+	"Crypto",
+	"Real Estate",
+	"Bonds",
+	"Gold",
+	"Fixed Deposit",
+	"Other"
+];
+var CURRENCIES = [
+	{
+		code: "USD",
+		label: "US Dollar ($)"
+	},
+	{
+		code: "EUR",
+		label: "Euro (€)"
+	},
+	{
+		code: "GBP",
+		label: "British Pound (£)"
+	},
+	{
+		code: "INR",
+		label: "Indian Rupee (₹)"
+	},
+	{
+		code: "JPY",
+		label: "Japanese Yen (¥)"
+	},
+	{
+		code: "CAD",
+		label: "Canadian Dollar (C$)"
+	},
+	{
+		code: "AUD",
+		label: "Australian Dollar (A$)"
+	},
+	{
+		code: "CHF",
+		label: "Swiss Franc (CHF)"
+	},
+	{
+		code: "CNY",
+		label: "Chinese Yuan (¥)"
+	},
+	{
+		code: "SGD",
+		label: "Singapore Dollar (S$)"
+	},
+	{
+		code: "AED",
+		label: "UAE Dirham (د.إ)"
+	},
+	{
+		code: "BRL",
+		label: "Brazilian Real (R$)"
+	}
+];
+//#endregion
+export { formatCurrency as a, setAppCurrency as c, INVESTMENT_TYPES as i, subscribeCurrency as l, EXPENSE_CATEGORIES as n, formatDate as o, INCOME_SOURCES as r, getAppCurrency as s, CURRENCIES as t };
