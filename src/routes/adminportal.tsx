@@ -30,7 +30,6 @@ import {
 const STORAGE_KEY = "admin-portal-token";
 
 export const Route = createFileRoute("/adminportal")({
-  ssr: false,
   head: () => ({
     meta: [
       { title: "Admin Portal" },

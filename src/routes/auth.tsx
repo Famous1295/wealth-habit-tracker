@@ -15,7 +15,6 @@ const authSchema = z.object({
 });
 
 export const Route = createFileRoute("/auth")({
-  ssr: false,
   validateSearch: (s: Record<string, unknown>): { mode?: "signin" | "signup" } => ({
     mode: (s.mode as string) === "signup" ? "signup" : (s.mode as string) === "signin" ? "signin" : undefined,
   }),
