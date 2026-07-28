@@ -35,6 +35,24 @@ function SettingsPage() {
   const [currency, setCurrency] = useState("USD");
   const [monthlyIncome, setMonthlyIncome] = useState("0");
 
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const changePassword = useMutation({
+    mutationFn: async () => {
+      if (newPassword.length < 6) throw new Error("Password must be at least 6 characters");
+      if (newPassword !== confirmPassword) throw new Error("Passwords don't match");
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Password updated");
+      setNewPassword("");
+      setConfirmPassword("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   useEffect(() => {
     if (q.data) {
       setFullName(q.data.full_name ?? "");
@@ -120,6 +138,47 @@ function SettingsPage() {
             </div>
             <Button type="submit" disabled={save.isPending} className="gradient-primary">
               Save changes
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft max-w-2xl">
+        <CardHeader>
+          <CardTitle>Change password</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              changePassword.mutate();
+            }}
+            className="space-y-5"
+          >
+            <div>
+              <Label>New password</Label>
+              <Input
+                type="password"
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+            <div>
+              <Label>Confirm new password</Label>
+              <Input
+                type="password"
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+            <Button type="submit" disabled={changePassword.isPending} className="gradient-primary">
+              Update password
             </Button>
           </form>
         </CardContent>
