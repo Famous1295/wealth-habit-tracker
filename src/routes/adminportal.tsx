@@ -176,6 +176,8 @@ function AdminDashboard({ token, onUnauthorized }: { token: string; onUnauthoriz
   });
 
   const [viewUserId, setViewUserId] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "user">("all");
 
   const adminUserIds = useMemo(
     () => new Set((q.data?.roles ?? []).filter((r) => r.role === "admin").map((r) => r.user_id)),
@@ -185,6 +187,21 @@ function AdminDashboard({ token, onUnauthorized }: { token: string; onUnauthoriz
     () => new Map((q.data?.profiles ?? []).map((p) => [p.id, p])),
     [q.data],
   );
+
+  const filteredUsers = useMemo(() => {
+    if (!q.data) return [];
+    const term = userSearch.trim().toLowerCase();
+    return q.data.users.filter((u) => {
+      const isAdmin = adminUserIds.has(u.id);
+      if (roleFilter === "admin" && !isAdmin) return false;
+      if (roleFilter === "user" && isAdmin) return false;
+      if (!term) return true;
+      const profile = profileById.get(u.id);
+      return (
+        u.email.toLowerCase().includes(term) || (profile?.full_name ?? "").toLowerCase().includes(term)
+      );
+    });
+  }, [q.data, userSearch, roleFilter, adminUserIds, profileById]);
 
   if (q.isLoading || !q.data) {
     return (
@@ -233,8 +250,34 @@ function AdminDashboard({ token, onUnauthorized }: { token: string; onUnauthoriz
 
         <TabsContent value="users">
           <Card className="mt-4 shadow-soft">
-            <CardHeader>
-              <CardTitle>Users ({q.data.users.length})</CardTitle>
+            <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>
+                Users ({filteredUsers.length}
+                {filteredUsers.length !== q.data.users.length ? ` of ${q.data.users.length}` : ""})
+              </CardTitle>
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                <Input
+                  placeholder="Search by email or name…"
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="h-9 sm:w-64"
+                />
+                <div className="flex overflow-hidden rounded-md border">
+                  {(["all", "admin", "user"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setRoleFilter(f)}
+                      className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                        roleFilter === f
+                          ? "bg-foreground text-background"
+                          : "bg-background text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="overflow-x-auto p-0">
               <Table>
@@ -248,7 +291,14 @@ function AdminDashboard({ token, onUnauthorized }: { token: string; onUnauthoriz
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {q.data.users.map((u) => {
+                  {filteredUsers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                        No users match your search.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filteredUsers.map((u) => {
                     const isAdmin = adminUserIds.has(u.id);
                     const profile = profileById.get(u.id);
                     return (
@@ -393,7 +443,7 @@ function AdminDashboard({ token, onUnauthorized }: { token: string; onUnauthoriz
       </Tabs>
 
       <Dialog open={!!viewUserId} onOpenChange={(open) => !open && setViewUserId(null)}>
-        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
           {viewUserId && <UserDetailView userId={viewUserId} data={q.data} />}
         </DialogContent>
       </Dialog>
@@ -416,52 +466,84 @@ function UserDetailView({ userId, data }: { userId: string; data: OverviewData }
 
   const totalIncome = incomes.reduce((s, r) => s + Number(r.amount), 0);
   const totalExpense = expenses.reduce((s, r) => s + Number(r.amount), 0);
-  const totalInvested = investments.reduce((s, r) => s + Number(r.current_value), 0);
+  const totalInvestedCurrent = investments.reduce((s, r) => s + Number(r.current_value), 0);
+  const totalInvestedCost = investments.reduce((s, r) => s + Number(r.invested_amount), 0);
+  const netCashflow = totalIncome - totalExpense;
+  const investmentGain = totalInvestedCurrent - totalInvestedCost;
+
+  const recentIncomes = [...incomes]
+    .sort((a, b) => (a.received_on < b.received_on ? 1 : -1))
+    .slice(0, 6);
+  const recentExpenses = [...expenses]
+    .sort((a, b) => (a.spent_on < b.spent_on ? 1 : -1))
+    .slice(0, 6);
 
   return (
     <div className="space-y-6">
       <DialogHeader>
-        <DialogTitle>{profile?.full_name || user?.email}</DialogTitle>
+        <DialogTitle>{profile?.full_name || user?.email}'s dashboard</DialogTitle>
       </DialogHeader>
-      <p className="-mt-4 text-sm text-muted-foreground">{user?.email} · Read-only view</p>
-
-      <div className="grid grid-cols-3 gap-3">
-        <Stat label="Income" value={formatCurrency(totalIncome, currency)} />
-        <Stat label="Expenses" value={formatCurrency(totalExpense, currency)} />
-        <Stat label="Invested (current)" value={formatCurrency(totalInvested, currency)} />
+      <div className="-mt-4 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        <span>{user?.email}</span>
+        <span>·</span>
+        <span>Joined {user ? formatDate(user.created_at) : "—"}</span>
+        <span>·</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">Read-only admin view</span>
       </div>
 
-      <div>
-        <h3 className="mb-2 text-sm font-semibold">Incomes ({incomes.length})</h3>
-        <ReadOnlyList
-          rows={incomes}
-          render={(r) => `${r.source} — ${formatCurrency(Number(r.amount), currency)} · ${formatDate(r.received_on)}`}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Total income" value={formatCurrency(totalIncome, currency)} />
+        <Stat label="Total expenses" value={formatCurrency(totalExpense, currency)} />
+        <Stat
+          label="Net cashflow"
+          value={`${netCashflow >= 0 ? "+" : ""}${formatCurrency(netCashflow, currency)}`}
+        />
+        <Stat
+          label="Investment gain/loss"
+          value={`${investmentGain >= 0 ? "+" : ""}${formatCurrency(investmentGain, currency)}`}
         />
       </div>
-      <div>
-        <h3 className="mb-2 text-sm font-semibold">Expenses ({expenses.length})</h3>
-        <ReadOnlyList
-          rows={expenses}
-          render={(r) => `${r.category} — ${formatCurrency(Number(r.amount), currency)} · ${formatDate(r.spent_on)}`}
-        />
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <div>
+          <h3 className="mb-2 text-sm font-semibold">Recent incomes ({incomes.length} total)</h3>
+          <ReadOnlyList
+            rows={recentIncomes}
+            render={(r) => `${r.source} — ${formatCurrency(Number(r.amount), currency)} · ${formatDate(r.received_on)}`}
+          />
+        </div>
+        <div>
+          <h3 className="mb-2 text-sm font-semibold">Recent expenses ({expenses.length} total)</h3>
+          <ReadOnlyList
+            rows={recentExpenses}
+            render={(r) => `${r.category} — ${formatCurrency(Number(r.amount), currency)} · ${formatDate(r.spent_on)}`}
+          />
+        </div>
       </div>
-      <div>
-        <h3 className="mb-2 text-sm font-semibold">Investments ({investments.length})</h3>
-        <ReadOnlyList
-          rows={investments}
-          render={(r) => `${r.name} — ${formatCurrency(Number(r.current_value), currency)} (invested ${formatCurrency(Number(r.invested_amount), currency)})`}
-        />
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <div>
+          <h3 className="mb-2 text-sm font-semibold">Investments ({investments.length})</h3>
+          <ReadOnlyList
+            rows={investments}
+            render={(r) => `${r.name} — ${formatCurrency(Number(r.current_value), currency)} (invested ${formatCurrency(Number(r.invested_amount), currency)})`}
+          />
+        </div>
+        <div>
+          <h3 className="mb-2 text-sm font-semibold">Savings goals ({goals.length})</h3>
+          <ReadOnlyList
+            rows={goals}
+            render={(r) => `${r.name} — ${formatCurrency(Number(r.saved_amount), currency)} of ${formatCurrency(Number(r.target_amount), currency)}`}
+          />
+        </div>
       </div>
-      <div>
-        <h3 className="mb-2 text-sm font-semibold">Savings goals ({goals.length})</h3>
-        <ReadOnlyList
-          rows={goals}
-          render={(r) => `${r.name} — ${formatCurrency(Number(r.saved_amount), currency)} of ${formatCurrency(Number(r.target_amount), currency)}`}
-        />
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Habits tracked" value={String(habitCount)} />
+        <Stat label="Habit logs" value={String(logCount)} />
+        <Stat label="Currency" value={currency} />
+        <Stat label="Monthly income target" value={formatCurrency(Number(profile?.monthly_income ?? 0), currency)} />
       </div>
-      <p className="text-sm text-muted-foreground">
-        Habits: {habitCount} · Habit logs: {logCount}
-      </p>
     </div>
   );
 }
@@ -567,12 +649,28 @@ function MoneyTable({
   onDelete: (id: string) => void;
   onSave: (id: string, patch: Record<string, unknown>) => void;
 }) {
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter((row) =>
+      columns.some((c) => String(row[c] ?? "").toLowerCase().includes(term)),
+    );
+  }, [rows, search, columns]);
+
   return (
     <Card className="shadow-soft">
-      <CardHeader>
+      <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle>
-          {title} ({rows.length})
+          {title} ({filtered.length}
+          {filtered.length !== rows.length ? ` of ${rows.length}` : ""})
         </CardTitle>
+        <Input
+          placeholder="Search…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-9 sm:w-56"
+        />
       </CardHeader>
       <CardContent className="overflow-x-auto p-0">
         <Table>
@@ -587,10 +685,10 @@ function MoneyTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => (
+            {filtered.map((row) => (
               <EditableRow key={row.id} row={row} columns={columns} onDelete={onDelete} onSave={onSave} />
             ))}
-            {rows.length === 0 && (
+            {filtered.length === 0 && (
               <TableRow>
                 <TableCell colSpan={columns.length + 1} className="text-center text-sm text-muted-foreground">
                   No records
